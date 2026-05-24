@@ -89,21 +89,29 @@ void HotkeyManagerWindowsPlugin::Register(
     std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
   const flutter::EncodableMap& args =
       std::get<flutter::EncodableMap>(*method_call.arguments());
-  int key_code = std::get<int>(args.at(flutter::EncodableValue("keyCode")));
+  int key_code = 0;
+  const auto& key_code_value = args.at(flutter::EncodableValue("keyCode"));
+  if (std::holds_alternative<int32_t>(key_code_value)) {
+    key_code = std::get<int32_t>(key_code_value);
+  } else if (std::holds_alternative<int64_t>(key_code_value)) {
+    key_code = static_cast<int>(std::get<int64_t>(key_code_value));
+  }
   std::vector<std::string> modifiers;
   std::string identifier =
       std::get<std::string>(args.at(flutter::EncodableValue("identifier")));
-  flutter::EncodableList key_modifier_list = std::get<flutter::EncodableList>(
-      args.at(flutter::EncodableValue("modifiers")));
-  for (flutter::EncodableValue key_modifier_value : key_modifier_list) {
-    std::string key_modifier = std::get<std::string>(key_modifier_value);
-    modifiers.push_back(key_modifier);
+  const auto& modifiers_value = args.at(flutter::EncodableValue("modifiers"));
+  if (std::holds_alternative<flutter::EncodableList>(modifiers_value)) {
+    flutter::EncodableList key_modifier_list =
+        std::get<flutter::EncodableList>(modifiers_value);
+    for (flutter::EncodableValue key_modifier_value : key_modifier_list) {
+      modifiers.push_back(std::get<std::string>(key_modifier_value));
+    }
   }
   int32_t hotkey_id = ++last_registered_hotkey_id_;
   UINT fs_modifiers = GetFsModifiersFromString(modifiers);
-  ::RegisterHotKey(
-      ::GetAncestor(registrar_->GetView()->GetNativeWindow(), GA_ROOT),
-      hotkey_id, fs_modifiers, key_code);
+  auto* view = registrar_->GetView();
+  HWND hwnd = view ? ::GetAncestor(view->GetNativeWindow(), GA_ROOT) : nullptr;
+  ::RegisterHotKey(hwnd, hotkey_id, fs_modifiers, key_code);
   hotkey_id_map_.insert(std::make_pair(identifier, hotkey_id));
   result->Success(flutter::EncodableValue(true));
 }
@@ -116,9 +124,9 @@ void HotkeyManagerWindowsPlugin::Unregister(
   std::string identifier =
       std::get<std::string>(args.at(flutter::EncodableValue("identifier")));
   int32_t hotkey_id = hotkey_id_map_.at(identifier);
-  ::UnregisterHotKey(
-      ::GetAncestor(registrar_->GetView()->GetNativeWindow(), GA_ROOT),
-      hotkey_id);
+  auto* view = registrar_->GetView();
+  HWND hwnd = view ? ::GetAncestor(view->GetNativeWindow(), GA_ROOT) : nullptr;
+  ::UnregisterHotKey(hwnd, hotkey_id);
   hotkey_id_map_.erase(identifier);
   result->Success(flutter::EncodableValue(true));
 }
@@ -129,9 +137,9 @@ void HotkeyManagerWindowsPlugin::UnregisterAll(
   for (auto it = hotkey_id_map_.begin(); it != hotkey_id_map_.end(); ++it) {
     std::string identifier = it->first;
     int32_t hotkey_id = it->second;
-    ::UnregisterHotKey(
-        ::GetAncestor(registrar_->GetView()->GetNativeWindow(), GA_ROOT),
-        hotkey_id);
+    auto* view = registrar_->GetView();
+    HWND hwnd = view ? ::GetAncestor(view->GetNativeWindow(), GA_ROOT) : nullptr;
+    ::UnregisterHotKey(hwnd, hotkey_id);
   }
   hotkey_id_map_.clear();
   result->Success(flutter::EncodableValue(true));
